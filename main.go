@@ -2,10 +2,11 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 )
 
 const PORT = "6379"
@@ -34,7 +35,8 @@ func clientConns(listener net.Listener) chan net.Conn {
 				fmt.Printf("Couldn't accept: " + err.Error())
 				continue
 			}
-			fmt.Printf("%v <-> %v\n", client.LocalAddr(), client.RemoteAddr())
+			fmt.Printf("%v <-> %v\n", client.LocalAddr(),
+				client.RemoteAddr())
 			ch <- client
 		}
 	}()
@@ -43,25 +45,29 @@ func clientConns(listener net.Listener) chan net.Conn {
 
 func handleConn(client net.Conn) {
 	defer client.Close()
-	b := bufio.NewReader(client)
 	for {
-		line, err := b.ReadBytes('\n')
-		if err != nil { // EOF, or worse
+		request, err := handleRequest(client)
+		if err != nil {
+			fmt.Println(err.Error())
 			break
 		}
-		fmt.Println(string(line))
-		count := binary.LittleEndian.Uint16(line[1:])
-		fmt.Println(count)
-		if err != nil { // int casting failed, ignore message
-			input, err := handleRequest(b, count)
+		fmt.Println(request)
+		reply := genResponse(request)
+		reply += DELIMITER
+		client.Write([]byte(reply))
+		/*if err != nil { // int casting failed, ignore message
+			input, err := handleRequest(reader, count)
 			if err != nil { // EOF probably
 				fmt.Println(err.Error())
 				break
 			}
-			output := bytes.Join(input, []byte(" "))
-			fmt.Println(output)
-			client.Write(output)
-		}
+			output := new(bytes.Buffer)
+			for _, str := range input {
+				output.WriteString(str + "\n")
+			}
+			fmt.Println(output.String())
+			client.Write(output.Bytes())
+		}*/
 		/*line = bytes.TrimRight(line, DELIMITER)
 		fmt.Println("IN: " + string(line))
 		resp := append(line, DELIMITER...)
@@ -70,23 +76,57 @@ func handleConn(client net.Conn) {
 	}
 }
 
-func handleRequest(reader *bufio.Reader, count uint16) ([][]byte, error) {
+func handleRequest(client net.Conn) ([]string, error) {
 	fmt.Println("hr called")
-	var arr [][]byte
-	var i uint16
-	for i = 0; i < count*2; i++ {
-		if i%2 != 0 {
-			raw, err := reader.ReadBytes('\n')
-			if err == nil {
-				fmt.Println(string(raw))
-				arr = append(arr, raw)
-			} else {
-				return nil, err
-			}
-		}
+	var args []string
+	var i int
+	reader := bufio.NewReader(client)
+	request, err := reader.ReadString('\n')
+	if err != nil { // EOF probably
+		fmt.Println(err.Error())
+		return nil, err
 	}
-	return arr, nil
+	argsCount, err := strconv.Atoi(string(request[1]))
+	fmt.Println(argsCount)
+	if err != nil {
+		return nil, errors.New("invalid command")
+	}
+	for i = 0; i < argsCount; i++ {
+		str, err := readString(reader)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, str)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return args, nil
 }
 
-func sendResponse(client net.Conn) {
+func readString(reader *bufio.Reader) (string, error) {
+	length, err := reader.ReadString('\n')
+	size, err := strconv.Atoi(string(length[1]))
+	str, err := reader.ReadString('\n')
+	str = strings.TrimSpace(str)
+	if len(str) != size {
+		err = errors.New("Arg length mismatched")
+	}
+	if err == nil {
+		fmt.Println(str)
+		return str, nil
+	} else {
+		return "", err
+	}
+}
+
+func genResponse(input []string) string {
+	output := "+ "
+	for i, str := range input {
+		output += str
+		if i != len(input) {
+			output += " "
+		}
+	}
+	return output
 }
