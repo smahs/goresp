@@ -55,25 +55,18 @@ func handleConn(client net.Conn) {
 		reply := genResponse(request)
 		reply += DELIMITER
 		client.Write([]byte(reply))
-		/*if err != nil { // int casting failed, ignore message
-			input, err := handleRequest(reader, count)
-			if err != nil { // EOF probably
-				fmt.Println(err.Error())
-				break
-			}
-			output := new(bytes.Buffer)
-			for _, str := range input {
-				output.WriteString(str + "\n")
-			}
-			fmt.Println(output.String())
-			client.Write(output.Bytes())
-		}*/
-		/*line = bytes.TrimRight(line, DELIMITER)
-		fmt.Println("IN: " + string(line))
-		resp := append(line, DELIMITER...)
-		fmt.Println("OUT: " + string(resp))
-		client.Write(resp)*/
 	}
+}
+
+func genResponse(input []string) string {
+	output := "+ "
+	for i, str := range input {
+		output += str
+		if i != len(input) {
+			output += " "
+		}
+	}
+	return output
 }
 
 func handleRequest(client net.Conn) ([]string, error) {
@@ -118,15 +111,4 @@ func readString(reader *bufio.Reader) (string, error) {
 	} else {
 		return "", err
 	}
-}
-
-func genResponse(input []string) string {
-	output := "+ "
-	for i, str := range input {
-		output += str
-		if i != len(input) {
-			output += " "
-		}
-	}
-	return output
 }
